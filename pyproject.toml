@@ -1,0 +1,14 @@
+[project]
+name = "streamlit-minter"
+version = "0.1.0"
+description = "A Streamlit application for minting assets on Algorand."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pera-wallet>=0.0.6",
+    "algokit-utils>=2.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
