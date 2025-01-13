@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 
 import os
@@ -8,5 +7,5 @@ import os
 
 # sys.path.append(os.path.abspath('.'))
 
-print(os.path.abspath('.'))
+print(os.path.abspath("."))
 print(Path(__file__).parents[2])

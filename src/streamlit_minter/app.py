@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+# Necessary for Streamlit Cloud deployment
 sys.path.append(str(Path(__file__).parents[2]))
 
 import streamlit as st
@@ -9,14 +10,13 @@ from src.streamlit_minter.utils import create_asset_config_txn, encode_txn
 from algosdk.transaction import AssetConfigTxn
 
 
-NETWORK = "testnet"
-MY_ADDRESS = "54G6BHF4SMNHGR6NJR3DQ4U7GLM5WKZBRK5BRWJE4OX2R3FZ2YJOJ4YBGQ"
-
 BTC_TOTAL = 2_100_000_000_000_000
 BTC_DECIMALS = 8
 
 JS_MAX_SAFE_INTEGER = 9_007_199_254_740_991
 
+if "network" not in st.session_state:
+    st.session_state.network = None
 
 if "account" not in st.session_state:
     st.session_state.account = None
@@ -36,6 +36,13 @@ def txn_json(txn: AssetConfigTxn):
 
 def account():
     with st.expander("Account", expanded=True):
+        st.session_state.network = st.selectbox(
+            "Network",
+            ("mainnet", "testnet"),
+            index=0,
+            format_func={"mainnet": "MainNet", "testnet": "TestNet"}.get,
+        )
+
         if not st.session_state.transaction_id and isinstance(
             st.session_state.acfg_txn, AssetConfigTxn
         ):
@@ -46,9 +53,8 @@ def account():
             transactions_to_sign = []
 
         wallet = pera_wallet(
-            network=NETWORK,
+            network=st.session_state.network,
             transactions_to_sign=transactions_to_sign,
-            key="pera_wallet",
         )
         if wallet is not None:
             st.session_state.account, st.session_state.transaction_id = wallet
@@ -60,7 +66,7 @@ def account():
         )
         if st.session_state.transaction_id:
             st.caption(
-                f"View your transaction on [lora](https://lora.algokit.io/{NETWORK}/transaction/{st.session_state.transaction_id}) the explorer 🥳"
+                f"View your transaction on [lora](https://lora.algokit.io/{st.session_state.network}/transaction/{st.session_state.transaction_id}) the explorer 🥳"
             )
             st.session_state.transaction_id = None
 
@@ -90,7 +96,7 @@ def asset_form():
         submitted = st.form_submit_button("Create Asset")
         if submitted:
             st.session_state.acfg_txn = create_asset_config_txn(
-                network=NETWORK,
+                network=st.session_state.network,
                 sender=st.session_state.account,
                 asset_name=asset_name,
                 unit_name=unit_name,
