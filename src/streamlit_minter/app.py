@@ -1,6 +1,6 @@
 import streamlit as st
 from pera_wallet import pera_wallet
-from utils import create_asset_config_txn, encode_txn
+from src.streamlit_minter.utils import create_asset_config_txn, encode_txn
 from algosdk.transaction import AssetConfigTxn
 
 
