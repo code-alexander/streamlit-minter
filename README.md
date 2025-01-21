@@ -1,1 +1,3 @@
-# algorand-nft-validator
+# streamlit-miner
+
+A Streamlit application for minting assets on Algorand.
