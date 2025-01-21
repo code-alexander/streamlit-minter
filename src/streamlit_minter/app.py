@@ -1,116 +1,136 @@
+"""`streamlit-minter` application."""
+
 import sys
 from pathlib import Path
 
 # Necessary for Streamlit Cloud deployment
 sys.path.append(str(Path(__file__).parents[2]))
 
-import streamlit as st
-from pera_wallet import pera_wallet
-from src.streamlit_minter.utils import create_asset_config_txn, encode_txn
-from algosdk.transaction import AssetConfigTxn
 
+from typing import Literal
+
+import streamlit as st
+from algosdk.transaction import AssetConfigTxn
+from pera_wallet import pera_wallet
+from streamlit_state import State, callback, state
+
+from streamlit_minter.utils import create_asset_config_txn, encode_txn
 
 BTC_TOTAL = 2_100_000_000_000_000
 BTC_DECIMALS = 8
 
 JS_MAX_SAFE_INTEGER = 9_007_199_254_740_991
 
-if "network" not in st.session_state:
-    st.session_state.network = None
 
-if "account" not in st.session_state:
-    st.session_state.account = None
+def account(acfg_txn: State[AssetConfigTxn | None]) -> tuple[Literal['mainnet', 'testnet'], str | None]:
+    """An expander section for the blockchain account and wallet interactions.
 
-if "transaction_id" not in st.session_state:
-    st.session_state.transaction_id = None
+    Args:
+        acfg_txn (State[AssetConfigTxn | None]): Transaction object state function.
 
-if "acfg_txn" not in st.session_state:
-    st.session_state.acfg_txn = None
-
-
-def txn_json(txn: AssetConfigTxn):
-    with st.container():
-        st.caption("Asset Configuration Transaction")
-        st.json(txn.dictify())
-
-
-def account():
-    with st.expander("Account", expanded=True):
-        st.session_state.network = st.selectbox(
-            "Network",
-            ("mainnet", "testnet"),
+    Returns:
+        tuple[Literal['mainnet', 'testnet'], str | None]: The selected network and connected address.
+    """
+    with st.expander('Account', expanded=True):
+        network: Literal['mainnet', 'testnet'] = st.selectbox(
+            label='Network',
+            options=('mainnet', 'testnet'),
             index=0,
-            format_func={"mainnet": "MainNet", "testnet": "TestNet"}.get,
+            format_func={'mainnet': 'MainNet', 'testnet': 'TestNet'}.get,
+            on_change=callback,
+            args=(acfg_txn, None),
         )
-
-        if not st.session_state.transaction_id and isinstance(
-            st.session_state.acfg_txn, AssetConfigTxn
-        ):
-            txn_json(st.session_state.acfg_txn)
-            transactions_to_sign = encode_txn(st.session_state.acfg_txn)
-            st.session_state.acfg_txn = None
-        else:
-            transactions_to_sign = []
 
         wallet = pera_wallet(
-            network=st.session_state.network,
-            transactions_to_sign=transactions_to_sign,
+            network=network,
+            transactions_to_sign=encode_txn(txn) if (txn := acfg_txn()) else [],
         )
-        if wallet is not None:
-            st.session_state.account, st.session_state.transaction_id = wallet
+        connected_address, signed_txn_id = wallet or (None, None)
 
-        st.caption(
-            f"Connected address: {st.session_state.account}"
-            if st.session_state.account
-            else "Connect your wallet to begin."
-        )
-        if st.session_state.transaction_id:
-            st.caption(
-                f"View your transaction on [lora](https://lora.algokit.io/{st.session_state.network}/transaction/{st.session_state.transaction_id}) the explorer 🥳"
+        st.caption(f'Connected address: {connected_address}' if connected_address else 'Connect your wallet to begin.')
+
+        if signed_txn_id:
+            acfg_txn = acfg_txn(None)
+            st.success(
+                f'View your transaction on [lora](https://lora.algokit.io/{network}/transaction/{signed_txn_id}) the explorer.',
+                icon='🥳',
             )
-            st.session_state.transaction_id = None
+
+        return network, connected_address
 
 
-def asset_form():
-    with st.form("asset_form"):
-        st.write("Asset Parameters")
+def asset_form(
+    network: Literal['mainnet', 'testnet'],
+    address: str,
+    acfg_txn: State[AssetConfigTxn | None],
+) -> None:
+    """A form to create an asset configuration transaction.
 
-        asset_name = st.text_input("Asset Name", value="Bitcoin", max_chars=32)
-        unit_name = st.text_input("Unit Name", value="BTC", max_chars=8)
-        total = st.number_input(
-            label="Total",
-            min_value=0,
-            # Max uint64 is > the max safe integer in JavaScript
-            max_value=JS_MAX_SAFE_INTEGER,
-            step=1,
-            value=BTC_TOTAL,
-        )
-        decimals = st.number_input(
-            label="Decimals",
-            min_value=0,
-            max_value=19,
-            step=1,
-            value=BTC_DECIMALS,
-        )
+    Args:
+        network (Literal['mainnet', 'testnet']): The network to use.
+        address (str): The address of the transaction signer.
+        acfg_txn (State[AssetConfigTxn  |  None]): The transaction object state function.
+    """
+    if txn := acfg_txn():
+        with st.sidebar:
+            st.header('Transaction Details')
+            st.json(txn.dictify())
 
-        submitted = st.form_submit_button("Create Asset")
-        if submitted:
-            st.session_state.acfg_txn = create_asset_config_txn(
-                network=st.session_state.network,
-                sender=st.session_state.account,
-                asset_name=asset_name,
-                unit_name=unit_name,
-                total=total,
-                decimals=decimals,
+    with st.expander('Asset Parameters', expanded=txn is None):
+        with st.form('asset_form', border=False):
+            asset_name = state(
+                'asset_name',
+                st.text_input('Asset Name', value='Bitcoin', max_chars=32, key='asset_name'),
             )
-            st.rerun()
+            unit_name = state(
+                'unit_name',
+                st.text_input('Unit Name', value='BTC', max_chars=8, key='unit_name'),
+            )
+            total = state(
+                'total',
+                st.number_input(
+                    label='Total',
+                    min_value=0,
+                    # Max uint64 is > the max safe integer in JavaScript
+                    max_value=JS_MAX_SAFE_INTEGER,
+                    step=1,
+                    value=BTC_TOTAL,
+                    key='total',
+                ),
+            )
+            decimals = state(
+                'decimals',
+                st.number_input(
+                    label='Decimals',
+                    min_value=0,
+                    max_value=19,
+                    step=1,
+                    value=BTC_DECIMALS,
+                    key='decimals',
+                ),
+            )
+
+            st.form_submit_button(
+                'Create Asset',
+                on_click=callback,
+                args=(
+                    acfg_txn,
+                    create_asset_config_txn(
+                        network=network,
+                        sender=address,
+                        asset_name=asset_name,
+                        unit_name=unit_name,
+                        total=total,
+                        decimals=decimals,
+                    ),
+                ),
+            )
 
 
-st.title("Algorand Asset Minter")
+if __name__ == '__main__':
+    st.title('Algorand Asset Minter')
 
-account()
-
-if not st.session_state.account:
-    st.stop()
-
-asset_form()
+    acfg_txn = state('acfg_txn')
+    network, connected_address = account(acfg_txn=acfg_txn)
+    if connected_address:
+        asset_form(network=network, address=connected_address, acfg_txn=acfg_txn)
