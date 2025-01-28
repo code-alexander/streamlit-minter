@@ -22,10 +22,13 @@ BTC_DECIMALS = 8
 JS_MAX_SAFE_INTEGER = 9_007_199_254_740_991
 
 
-def account(acfg_txn: State[AssetConfigTxn | None]) -> tuple[Literal['mainnet', 'testnet'], str | None]:
+def account(
+    prev_txn_id: State[str | None], acfg_txn: State[AssetConfigTxn | None]
+) -> tuple[Literal['mainnet', 'testnet'], str | None]:
     """An expander section for the blockchain account and wallet interactions.
 
     Args:
+        prev_txn_id (State[str | None]): The previous transaction ID state function.
         acfg_txn (State[AssetConfigTxn | None]): Transaction object state function.
 
     Returns:
@@ -50,7 +53,9 @@ def account(acfg_txn: State[AssetConfigTxn | None]) -> tuple[Literal['mainnet', 
         st.caption(f'Connected address: {connected_address}' if connected_address else 'Connect your wallet to begin.')
 
         if signed_txn_id:
+            prev_txn_id = prev_txn_id(signed_txn_id)
             acfg_txn = acfg_txn(None)
+
             st.success(
                 f'View your transaction on [lora](https://lora.algokit.io/{network}/transaction/{signed_txn_id}) the explorer.',
                 icon='🥳',
@@ -62,52 +67,45 @@ def account(acfg_txn: State[AssetConfigTxn | None]) -> tuple[Literal['mainnet', 
 def asset_form(
     network: Literal['mainnet', 'testnet'],
     address: str,
+    prev_txn_id: State[str | None],
     acfg_txn: State[AssetConfigTxn | None],
+    asset_name_key: str = 'asset_name',
+    unit_name_key: str = 'unit_name',
+    total_key: str = 'total',
+    decimals_key: str = 'decimals',
 ) -> None:
     """A form to create an asset configuration transaction.
 
     Args:
         network (Literal['mainnet', 'testnet']): The network to use.
         address (str): The address of the transaction signer.
+        prev_txn_id (State[str | None]): The previous transaction ID state function.
         acfg_txn (State[AssetConfigTxn  |  None]): The transaction object state function.
+        asset_name_key (str, optional): The asset name state key. Defaults to 'asset_name'.
+        unit_name_key (str, optional): The unit name state key. Defaults to 'unit_name'.
+        total_key (str, optional): The total state key. Defaults to 'total'.
+        decimals_key (str, optional): The decimals state key. Defaults to 'decimals'.
     """
-    if txn := acfg_txn():
-        with st.sidebar:
-            st.header('Transaction Details')
-            st.json(txn.dictify())
-
-    with st.expander('Asset Parameters', expanded=txn is None):
+    with st.expander('Asset Parameters', expanded=acfg_txn() is None and prev_txn_id() is None):
         with st.form('asset_form', border=False):
-            asset_name = state(
-                'asset_name',
-                st.text_input('Asset Name', value='Bitcoin', max_chars=32, key='asset_name'),
+            st.text_input('Asset Name', value='Bitcoin', max_chars=32, key=asset_name_key)
+            st.text_input('Unit Name', value='BTC', max_chars=8, key=unit_name_key)
+            st.number_input(
+                label='Total',
+                min_value=0,
+                # Max uint64 is > the max safe integer in JavaScript
+                max_value=JS_MAX_SAFE_INTEGER,
+                step=1,
+                value=BTC_TOTAL,
+                key=total_key,
             )
-            unit_name = state(
-                'unit_name',
-                st.text_input('Unit Name', value='BTC', max_chars=8, key='unit_name'),
-            )
-            total = state(
-                'total',
-                st.number_input(
-                    label='Total',
-                    min_value=0,
-                    # Max uint64 is > the max safe integer in JavaScript
-                    max_value=JS_MAX_SAFE_INTEGER,
-                    step=1,
-                    value=BTC_TOTAL,
-                    key='total',
-                ),
-            )
-            decimals = state(
-                'decimals',
-                st.number_input(
-                    label='Decimals',
-                    min_value=0,
-                    max_value=19,
-                    step=1,
-                    value=BTC_DECIMALS,
-                    key='decimals',
-                ),
+            st.number_input(
+                label='Decimals',
+                min_value=0,
+                max_value=19,
+                step=1,
+                value=BTC_DECIMALS,
+                key=decimals_key,
             )
 
             st.form_submit_button(
@@ -115,22 +113,38 @@ def asset_form(
                 on_click=callback,
                 args=(
                     acfg_txn,
-                    create_asset_config_txn(
+                    lambda _: create_asset_config_txn(
                         network=network,
                         sender=address,
-                        asset_name=asset_name,
-                        unit_name=unit_name,
-                        total=total,
-                        decimals=decimals,
+                        asset_name=state(asset_name_key),
+                        unit_name=state(unit_name_key),
+                        total=state(total_key),
+                        decimals=state(decimals_key),
                     ),
                 ),
             )
 
 
-if __name__ == '__main__':
-    st.title('Algorand Asset Minter')
+def transaction_details(txn: AssetConfigTxn) -> None:
+    """Renders transaction details as JSON in the siderbar.
 
+    Args:
+        txn (AssetConfigTxn): The transaction to render.
+    """
+    with st.sidebar:
+        st.header('Transaction Details')
+        st.json(txn.dictify())
+
+
+if __name__ == '__main__':
+    st.title('Asset Minter')
+    top = st.container()
+
+    prev_txn_id = state('prev_txn_id')
     acfg_txn = state('acfg_txn')
-    network, connected_address = account(acfg_txn=acfg_txn)
+    network, connected_address = account(prev_txn_id=prev_txn_id, acfg_txn=acfg_txn)
     if connected_address:
-        asset_form(network=network, address=connected_address, acfg_txn=acfg_txn)
+        with top:
+            asset_form(network=network, address=connected_address, prev_txn_id=prev_txn_id, acfg_txn=acfg_txn)
+        if txn := acfg_txn():
+            transaction_details(txn)

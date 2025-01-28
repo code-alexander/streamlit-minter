@@ -61,20 +61,20 @@ def encode_test_payment(network: Literal['mainnet', 'testnet'], sender: str) -> 
 def create_asset_config_txn(
     network: Literal['mainnet', 'testnet'],
     sender: str,
-    asset_name: State[str],
-    unit_name: State[str],
-    total: State[int],
-    decimals: State[int],
+    asset_name: State,
+    unit_name: State,
+    total: State,
+    decimals: State,
 ) -> AssetConfigTxn:
     """Constructs an asset configuration transaction.
 
     Args:
         network (Literal["mainnet", "testnet"]): The network to use.
         sender (str): Sender address.
-        asset_name (State[str]): The name of the asset.
-        unit_name (State[str]): The name of a unit of this asset.
-        total (State[int]): The total number of base units of the asset to create.
-        decimals (State[int]): The number of digits to use after the decimal point when displaying the asset.
+        asset_name (State): The name of the asset.
+        unit_name (State): The name of a unit of this asset.
+        total (State): The total number of base units of the asset to create.
+        decimals (State): The number of digits to use after the decimal point when displaying the asset.
 
     Returns:
         AssetConfigTxn: The transaction object.
